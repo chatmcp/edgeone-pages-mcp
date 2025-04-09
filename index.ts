@@ -1,56 +1,63 @@
 #!/usr/bin/env node
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod';
-import { randomBytes } from 'crypto';
-import os from 'os';
-import path from 'path';
-import fs from 'fs';
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { getParamValue } from "@chatmcp/sdk/utils/index.js";
+import { RestServerTransport } from "@chatmcp/sdk/server/rest.js";
+
+import { z } from "zod";
+import { randomBytes } from "crypto";
+import os from "os";
+import path from "path";
+import fs from "fs";
 
 let installationId: string;
 
 function generateInstallationId(): string {
   try {
-    const idFilePath = path.join(os.tmpdir(), 'edgeone-pages-id');
-    
+    const idFilePath = path.join(os.tmpdir(), "edgeone-pages-id");
+
     if (fs.existsSync(idFilePath)) {
-      const id = fs.readFileSync(idFilePath, 'utf8').trim();
+      const id = fs.readFileSync(idFilePath, "utf8").trim();
       if (id) {
         return id;
       }
     }
-    
-    const newId = randomBytes(8).toString('hex');
-    
+
+    const newId = randomBytes(8).toString("hex");
+
     try {
       fs.writeFileSync(idFilePath, newId);
     } catch (writeError) {
       // do nothing
     }
-    
+
     return newId;
   } catch (error) {
-    return randomBytes(8).toString('hex');
+    return randomBytes(8).toString("hex");
   }
 }
 
 installationId = generateInstallationId();
 
+const mode = getParamValue("mode") || "stdio";
+const port = getParamValue("port") || 9593;
+const endpoint = getParamValue("endpoint") || "/rest";
+
 const server = new McpServer({
-  name: 'edgeone-pages-deploy-mcp-server',
-  version: '1.0.0',
+  name: "edgeone-pages-deploy-mcp-server",
+  version: "1.0.0",
   description:
     "An MCP service for deploying HTML content to EdgeOne Pages. Simply provide HTML content to deploy to EdgeOne's Pages service and receive a publicly accessible URL for your deployed page.",
 });
 
 const handleApiError = (error: any) => {
-  console.error('API Error:', error);
-  const errorMessage = error.message || 'Unknown error occurred';
+  console.error("API Error:", error);
+  const errorMessage = error.message || "Unknown error occurred";
   return {
     content: [
       {
-        type: 'text' as const,
+        type: "text" as const,
         text: `Error: ${errorMessage}`,
       },
     ],
@@ -60,24 +67,24 @@ const handleApiError = (error: any) => {
 
 export async function getBaseUrl(): Promise<string> {
   try {
-    const res = await fetch('https://mcp.edgeone.site/get_base_url');
+    const res = await fetch("https://mcp.edgeone.site/get_base_url");
     if (!res.ok) {
       throw new Error(`HTTP error: ${res.status} ${res.statusText}`);
     }
     const data = await res.json();
     return data.baseUrl;
   } catch (error) {
-    console.error('Failed to get base URL:', error);
+    console.error("Failed to get base URL:", error);
     throw error;
   }
 }
 
 export async function deployHtml(value: string, baseUrl: string) {
   const res = await fetch(baseUrl, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'X-Installation-ID': installationId
+      "Content-Type": "application/json",
+      "X-Installation-ID": installationId,
     },
     body: JSON.stringify({ value }),
   });
@@ -91,13 +98,13 @@ export async function deployHtml(value: string, baseUrl: string) {
 }
 
 server.tool(
-  'deploy-html',
-  'Deploy HTML content to EdgeOne Pages, return the public URL',
+  "deploy-html",
+  "Deploy HTML content to EdgeOne Pages, return the public URL",
   {
     value: z
       .string()
       .describe(
-        'HTML or text content to deploy. Provide complete HTML or text content you want to publish, and the system will return a public URL where your content can be accessed.'
+        "HTML or text content to deploy. Provide complete HTML or text content you want to publish, and the system will return a public URL where your content can be accessed."
       ),
   },
   async ({ value }) => {
@@ -108,7 +115,7 @@ server.tool(
       return {
         content: [
           {
-            type: 'text' as const,
+            type: "text" as const,
             text: result,
           },
         ],
@@ -119,7 +126,17 @@ server.tool(
   }
 );
 
-console.log('Starting edgeone-pages-deploy-mcp-server...');
-const transport = new StdioServerTransport();
-await server.connect(transport);
-console.log('edgeone-pages-deploy-mcp-server started successfully!');
+if (mode === "rest") {
+  const transport = new RestServerTransport({
+    port,
+    endpoint,
+  });
+  await server.connect(transport);
+
+  await transport.startServer();
+} else {
+  console.log("Starting edgeone-pages-deploy-mcp-server...");
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.log("edgeone-pages-deploy-mcp-server started successfully!");
+}

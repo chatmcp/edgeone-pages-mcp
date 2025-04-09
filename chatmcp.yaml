@@ -1,0 +1,22 @@
+name: edgeone-pages
+
+rest:
+  name: edgeone-pages
+  port: 9593
+  endpoint: /rest
+
+npx:
+  command: >-
+    npx -y edgeone-pages-mcp
+  config: >-
+    {
+      "mcpServers": {
+        "edgeone-pages": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "edgeone-pages-mcp"
+          ]
+        }
+      }
+    }
